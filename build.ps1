@@ -1,6 +1,6 @@
-$ErrorActionPreference = "Stop"
-
 python -m pip install -e ".[build]"
+if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
 python -m PyInstaller `
     --noconfirm `
     --clean `
@@ -9,3 +9,4 @@ python -m PyInstaller `
     --name MingteTechServiceTool `
     --paths src `
     src\mtservice\__main__.py
+exit $LASTEXITCODE
