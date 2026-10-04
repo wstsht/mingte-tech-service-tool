@@ -100,14 +100,15 @@ def test_mt163_sensors_follow_card_through_the_slot():
 
 def test_mt166_sensors():
     assert MT166.active_sensors(0x80) == ["Накопитель пуст"]
-    assert MT166.active_sensors(0x21) == ["Карта в позиции чтения", "Возврат по таймауту"]
+    assert MT166.active_sensors(0x21) == ["Карта в тракте", "Автосбор"]
 
 
 def test_sensor_states_cover_every_described_bit():
     states = MT166.sensor_states(0x40)
     assert len(states) == 8
     bezel = next(state for state in states if state.sensor.bit == 6)
-    assert bezel.on and bezel.text == "есть"
+    assert bezel.on and bezel.text == "Да"
+    assert not states[0].on and states[0].text == "Нет"
 
 
 def test_status_and_version_frames_are_shared():

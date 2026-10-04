@@ -57,9 +57,9 @@ class Command:
 class Sensor:
     bit: int
     title: str
-    on: str = "есть"
-    off: str = "нет"
     alarm: bool = False
+    on: str = "Да"
+    off: str = "Нет"
 
 
 @dataclass(frozen=True)
@@ -105,9 +105,6 @@ class Profile:
 VERSION = Command("version", "Версия", 0x30, 0x30, timeout=1.0)
 STATUS = Command("status", "Статус", 0x32, 0x30, timeout=1.0)
 
-YES_NO = {"on": "да", "off": "нет"}
-
-
 def _pack_move(values: Mapping[str, int]) -> bytes:
     return bytes((values["direction"] | values["steps"],))
 
@@ -152,9 +149,9 @@ MT163 = Profile(
         Sensor(6, "Датчик Q3"),
         Sensor(5, "Датчик Q2"),
         Sensor(4, "Датчик Q1"),
-        Sensor(3, "Идёт приём карты", **YES_NO),
-        Sensor(2, "Идёт возврат карты", **YES_NO),
-        Sensor(1, "Ошибка", **YES_NO, alarm=True),
+        Sensor(3, "Приём карты"),
+        Sensor(2, "Возврат карты"),
+        Sensor(1, "Ошибка", alarm=True),
         Sensor(0, "Карта в позиции чтения"),
     ),
 )
@@ -173,14 +170,14 @@ MT166 = Profile(
         Command("collect", "Забрать в коллектор", 0x33, 0x30),
     ),
     sensors=(
-        Sensor(7, "Накопитель пуст", **YES_NO, alarm=True),
-        Sensor(6, "Карта у окна"),
-        Sensor(5, "Карта в позиции чтения"),
-        Sensor(4, "Карт мало", **YES_NO, alarm=True),
-        Sensor(3, "Идёт выдача", **YES_NO),
-        Sensor(2, "Идёт сбор", **YES_NO),
-        Sensor(1, "Ошибка выдачи", **YES_NO, alarm=True),
-        Sensor(0, "Возврат по таймауту", on="поддерживается", off="нет"),
+        Sensor(7, "Накопитель пуст", alarm=True),
+        Sensor(6, "Карта у выхода"),
+        Sensor(5, "Карта в тракте"),
+        Sensor(4, "Мало карт", alarm=True),
+        Sensor(3, "Выдача"),
+        Sensor(2, "Сбор"),
+        Sensor(1, "Ошибка выдачи", alarm=True),
+        Sensor(0, "Автосбор"),
     ),
 )
 

@@ -2,15 +2,20 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QListWidget,
     QPushButton,
     QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -18,20 +23,14 @@ from PySide6.QtWidgets import (
 from ..devices import Profile
 from .session import Session
 
-COLORS = {"on": "#2e9e4f", "alarm": "#d63b30", "off": "#c9ced6", "lost": "#f0f1f3"}
+ACTIVE = {False: (QColor("#e2f3e5"), QColor("#1f6b33")), True: (QColor("#fbe1de"), QColor("#a8261b"))}
 HISTORY_LIMIT = 1000
 
 
-class Indicator(QLabel):
-    def __init__(self) -> None:
-        super().__init__()
-        self.setFixedSize(14, 14)
-        self.set_color("lost")
-
-    def set_color(self, name: str) -> None:
-        self.setStyleSheet(
-            f"background: {COLORS[name]}; border: 1px solid #8a919c; border-radius: 7px;"
-        )
+def _mono() -> QFont:
+    font = QFont()
+    font.setFamilies(["Consolas", "Courier New", "monospace"])
+    return font
 
 
 class SensorsPanel(QGroupBox):
@@ -39,7 +38,6 @@ class SensorsPanel(QGroupBox):
         super().__init__("Датчики", parent)
         self.session = session
         self._last: int | None = None
-        self._rows: list[tuple[int, Indicator, QLabel]] = []
 
         self._poll = QCheckBox("Опрос")
         self._poll.setChecked(session.polling)
@@ -50,25 +48,33 @@ class SensorsPanel(QGroupBox):
         self._interval.setValue(session.poll_interval_ms)
         self._poll.toggled.connect(self._apply_polling)
         self._interval.valueChanged.connect(self._apply_polling)
+        self._raw = QLabel()
+        self._raw.setFont(_mono())
 
         controls = QHBoxLayout()
         controls.addWidget(self._poll)
         controls.addWidget(self._interval)
         controls.addStretch(1)
+        controls.addWidget(self._raw)
 
-        self._raw = QLabel("S = —")
-        self._raw.setStyleSheet("font-family: Consolas, monospace; font-size: 13px;")
-        self._grid_host = QWidget()
+        self._table = QTableWidget(0, 2)
+        self._table.setHorizontalHeaderLabels(["Сигнал", "Состояние"])
+        self._table.verticalHeader().setVisible(False)
+        self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self._table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._table.setShowGrid(False)
+        self._table.setFont(_mono())
 
         self._history = QListWidget()
-        self._history.setStyleSheet("font-family: Consolas, monospace;")
+        self._history.setFont(_mono())
         clear = QPushButton("Очистить историю")
         clear.clicked.connect(self._history.clear)
 
         layout = QVBoxLayout(self)
         layout.addLayout(controls)
-        layout.addWidget(self._raw)
-        layout.addWidget(self._grid_host)
+        layout.addWidget(self._table)
         layout.addWidget(QLabel("Изменения:"))
         layout.addWidget(self._history, 1)
         layout.addWidget(clear)
@@ -81,47 +87,44 @@ class SensorsPanel(QGroupBox):
         self.session.set_polling(self._poll.isChecked(), self._interval.value())
 
     def _build(self, profile: Profile) -> None:
-        old = self._grid_host.layout()
-        if old is not None:
-            while old.count():
-                item = old.takeAt(0)
-                if item.widget():
-                    item.widget().deleteLater()
-            QWidget().setLayout(old)
-        grid = QGridLayout(self._grid_host)
-        grid.setContentsMargins(0, 4, 0, 4)
-        self._rows = []
+        self._table.setRowCount(len(profile.sensors))
         for row, sensor in enumerate(profile.sensors):
-            indicator = Indicator()
-            state = QLabel("—")
-            grid.addWidget(indicator, row, 0)
-            grid.addWidget(QLabel(f"b{sensor.bit}  {sensor.title}"), row, 1)
-            grid.addWidget(state, row, 2)
-            self._rows.append((sensor.bit, indicator, state))
-        grid.setColumnStretch(1, 1)
+            title = QTableWidgetItem(sensor.title)
+            title.setToolTip(f"Бит {sensor.bit} байта статуса")
+            state = QTableWidgetItem()
+            state.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._table.setItem(row, 0, title)
+            self._table.setItem(row, 1, state)
+        self._table.resizeRowsToContents()
+        height = self._table.horizontalHeader().height() + 2 * self._table.frameWidth()
+        height += sum(self._table.rowHeight(row) for row in range(self._table.rowCount()))
+        self._table.setFixedHeight(height)
         self._last = None
         self._show(None)
 
     def _show(self, value: int | None) -> None:
         profile = self.session.profile
         if value is None:
-            self._raw.setText("S = —  (нет данных)")
-            for _, indicator, state in self._rows:
-                indicator.set_color("lost")
-                state.setText("—")
+            self._raw.setText("S = —")
+            for row in range(self._table.rowCount()):
+                self._paint(row, "—", None)
             self._last = None
             return
-        self._raw.setText(f"S = 0x{value:02X}   {value:08b}")
-        for sensor_state, (_, indicator, state) in zip(profile.sensor_states(value), self._rows):
-            sensor = sensor_state.sensor
-            if sensor_state.on:
-                indicator.set_color("alarm" if sensor.alarm else "on")
-            else:
-                indicator.set_color("off")
-            state.setText(sensor_state.text)
+        self._raw.setText(f"S = 0x{value:02X}  {value:08b}")
+        for row, state in enumerate(profile.sensor_states(value)):
+            colors = ACTIVE[state.sensor.alarm] if state.on else None
+            self._paint(row, state.text, colors)
         if self._last is not None and value != self._last:
             self._record(profile, self._last, value)
         self._last = value
+
+    def _paint(self, row: int, text: str, colors: tuple[QColor, QColor] | None) -> None:
+        background = QBrush(colors[0]) if colors else QBrush()
+        state = self._table.item(row, 1)
+        state.setText(text)
+        state.setForeground(QBrush(colors[1]) if colors else QBrush())
+        for column in range(2):
+            self._table.item(row, column).setBackground(background)
 
     def _record(self, profile: Profile, before: int, after: int) -> None:
         moment = datetime.now().strftime("%H:%M:%S.%f")[:-3]

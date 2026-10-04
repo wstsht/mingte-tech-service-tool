@@ -8,6 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QSettings  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
+from mtservice.devices import MT166  # noqa: E402
 from mtservice.scripts import CommandStep, RepeatStep, Script  # noqa: E402
 from mtservice.ui.main_window import MainWindow  # noqa: E402
 
@@ -75,3 +76,17 @@ def test_raw_frame_goes_to_the_device(app, window):
     window.commands._raw_input.setText("31 31")
     window.commands._send_raw()
     assert wait_until(app, lambda: window.sensors._last == 0x71)
+
+
+def test_sensor_table_follows_the_device(app, window):
+    connect(window, "mt166")
+    assert wait_until(app, lambda: window.session.profile.key == "mt166")
+    table = window.sensors._table
+    assert [table.horizontalHeaderItem(i).text() for i in range(2)] == ["Сигнал", "Состояние"]
+    assert [table.item(row, 0).text() for row in range(table.rowCount())] == [
+        "Накопитель пуст", "Карта у выхода", "Карта в тракте", "Мало карт",
+        "Выдача", "Сбор", "Ошибка выдачи", "Автосбор",
+    ]
+    assert wait_until(app, lambda: table.item(1, 1).text() == "Нет")
+    window.session.send(MT166.command("to_bezel").frame())
+    assert wait_until(app, lambda: table.item(1, 1).text() == "Да")

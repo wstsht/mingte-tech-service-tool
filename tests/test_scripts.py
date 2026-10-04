@@ -95,7 +95,7 @@ def test_describe_steps():
     assert describe(RepeatStep(times=5), MT163) == "Повторить 5 раз"
     assert describe(RepeatStep(times=0), MT163) == "Повторять без конца"
     assert describe(WaitStep(bit=4, state=True, timeout_ms=3000), MT163) == (
-        "Ждать «Датчик Q1» = есть, не дольше 3 с"
+        "Ждать «Датчик Q1» = Да, не дольше 3 с"
     )
     assert describe(CommandStep("teleport"), MT163) == "Неизвестная команда teleport"
 
