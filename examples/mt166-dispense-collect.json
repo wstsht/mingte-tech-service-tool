@@ -1,0 +1,42 @@
+{
+  "profile": "mt166",
+  "stop_on_error": true,
+  "steps": [
+    {
+      "type": "repeat",
+      "times": 50,
+      "steps": [
+        {
+          "type": "command",
+          "command": "to_read",
+          "values": {}
+        },
+        {
+          "type": "wait",
+          "bit": 5,
+          "state": true,
+          "timeout_ms": 5000
+        },
+        {
+          "type": "pause",
+          "ms": 300
+        },
+        {
+          "type": "command",
+          "command": "collect",
+          "values": {}
+        },
+        {
+          "type": "wait",
+          "bit": 5,
+          "state": false,
+          "timeout_ms": 5000
+        },
+        {
+          "type": "pause",
+          "ms": 500
+        }
+      ]
+    }
+  ]
+}

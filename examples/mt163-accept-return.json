@@ -1,0 +1,42 @@
+{
+  "profile": "mt163",
+  "stop_on_error": true,
+  "steps": [
+    {
+      "type": "repeat",
+      "times": 100,
+      "steps": [
+        {
+          "type": "command",
+          "command": "insert_front",
+          "values": {}
+        },
+        {
+          "type": "wait",
+          "bit": 0,
+          "state": true,
+          "timeout_ms": 15000
+        },
+        {
+          "type": "pause",
+          "ms": 500
+        },
+        {
+          "type": "command",
+          "command": "eject",
+          "values": {}
+        },
+        {
+          "type": "wait",
+          "bit": 0,
+          "state": false,
+          "timeout_ms": 5000
+        },
+        {
+          "type": "pause",
+          "ms": 2000
+        }
+      ]
+    }
+  ]
+}
