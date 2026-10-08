@@ -6,10 +6,12 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QSettings  # noqa: E402
+from PySide6.QtGui import QColor, QPalette  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from mtservice.devices import MT166  # noqa: E402
 from mtservice.scripts import CommandStep, RepeatStep, Script  # noqa: E402
+from mtservice.ui.colors import ACTIVE  # noqa: E402
 from mtservice.ui.main_window import MainWindow  # noqa: E402
 
 
@@ -90,3 +92,27 @@ def test_sensor_table_follows_the_device(app, window):
     assert wait_until(app, lambda: table.item(1, 1).text() == "Нет")
     window.session.send(MT166.command("to_bezel").frame())
     assert wait_until(app, lambda: table.item(1, 1).text() == "Да")
+
+
+def test_active_rows_are_readable_in_dark_theme(app, tmp_path):
+    previous = app.palette()
+    dark = QPalette()
+    for role, color in ((QPalette.ColorRole.Base, "#1e1e1e"), (QPalette.ColorRole.Window, "#2d2d2d"),
+                        (QPalette.ColorRole.Text, "#ffffff"), (QPalette.ColorRole.WindowText, "#ffffff")):
+        dark.setColor(role, QColor(color))
+    app.setPalette(dark)
+    window = MainWindow(QSettings(str(tmp_path / "dark.ini"), QSettings.Format.IniFormat))
+    try:
+        connect(window, "mt163")
+        window.commands._raw_input.setText("31 31")
+        assert wait_until(app, lambda: window.session.connected and window.sensors._last is not None)
+        window.commands._send_raw()
+        assert wait_until(app, lambda: window.sensors._last == 0x71)
+        table = window.sensors._table
+        expected = QColor(ACTIVE[(False, True)][1])
+        for column in range(2):
+            assert table.item(0, column).foreground().color() == expected
+    finally:
+        window.close()
+        app.setPalette(previous)
+        app.processEvents()

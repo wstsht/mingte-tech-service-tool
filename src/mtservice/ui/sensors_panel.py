@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -21,9 +21,9 @@ from PySide6.QtWidgets import (
 )
 
 from ..devices import Profile
+from .colors import active_colors, is_dark
 from .session import Session
 
-ACTIVE = {False: (QColor("#e2f3e5"), QColor("#1f6b33")), True: (QColor("#fbe1de"), QColor("#a8261b"))}
 HISTORY_LIMIT = 1000
 
 
@@ -103,28 +103,36 @@ class SensorsPanel(QGroupBox):
         self._show(None)
 
     def _show(self, value: int | None) -> None:
-        profile = self.session.profile
+        self._render(value)
+        if value is not None and self._last is not None and value != self._last:
+            self._record(self.session.profile, self._last, value)
+        self._last = value
+
+    def _render(self, value: int | None) -> None:
         if value is None:
             self._raw.setText("S = —")
             for row in range(self._table.rowCount()):
                 self._paint(row, "—", None)
-            self._last = None
             return
         self._raw.setText(f"S = 0x{value:02X}  {value:08b}")
-        for row, state in enumerate(profile.sensor_states(value)):
-            colors = ACTIVE[state.sensor.alarm] if state.on else None
+        dark = is_dark(self._table.palette())
+        for row, state in enumerate(self.session.profile.sensor_states(value)):
+            colors = active_colors(state.sensor.alarm, dark) if state.on else None
             self._paint(row, state.text, colors)
-        if self._last is not None and value != self._last:
-            self._record(profile, self._last, value)
-        self._last = value
 
     def _paint(self, row: int, text: str, colors: tuple[QColor, QColor] | None) -> None:
         background = QBrush(colors[0]) if colors else QBrush()
-        state = self._table.item(row, 1)
-        state.setText(text)
-        state.setForeground(QBrush(colors[1]) if colors else QBrush())
+        foreground = QBrush(colors[1]) if colors else QBrush()
+        self._table.item(row, 1).setText(text)
         for column in range(2):
-            self._table.item(row, column).setBackground(background)
+            item = self._table.item(row, column)
+            item.setBackground(background)
+            item.setForeground(foreground)
+
+    def changeEvent(self, event: QEvent) -> None:
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.PaletteChange and getattr(self, "_table", None) is not None:
+            self._render(self._last)
 
     def _record(self, profile: Profile, before: int, after: int) -> None:
         moment = datetime.now().strftime("%H:%M:%S.%f")[:-3]

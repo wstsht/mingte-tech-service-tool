@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from ..format import failed, log_line
 from ..link import Exchange
+from .colors import ERROR, NOTE, is_dark
 from .session import Session
 
 LINE_LIMIT = 20000
@@ -57,13 +58,13 @@ class LogPanel(QGroupBox):
 
     def note(self, text: str) -> None:
         moment = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-        self._append(f"{moment}  {text}", "#5b6472")
+        self._append(f"{moment}  {text}", NOTE[is_dark(self._view.palette())])
 
     def _on_exchange(self, exchange: Exchange) -> None:
         if exchange.source == "poll" and not self._show_polls.isChecked():
             return
         profile = self.session.profile
-        color = "#c0392b" if failed(exchange, profile) else None
+        color = ERROR[is_dark(self._view.palette())] if failed(exchange, profile) else None
         self._append(log_line(exchange, profile), color)
 
     def _append(self, text: str, color: str | None) -> None:
