@@ -101,6 +101,15 @@ def test_reply_to_other_command_is_not_accepted(opened):
     assert exchange.error == "ответ не распознан"
 
 
+def test_nak_is_reported_without_waiting_for_timeout(opened):
+    link = opened(Scripted(b"\x15"))
+    started = time.monotonic()
+    exchange = link.call(MT163.status.frame(), timeout=2.0)
+    assert exchange.nak
+    assert exchange.error == "устройство не поддерживает команду (NAK)"
+    assert time.monotonic() - started < 0.5
+
+
 def test_port_failure_is_reported(opened):
     link = opened(Broken())
     exchange = link.call(MT163.status.frame(), timeout=0.1)

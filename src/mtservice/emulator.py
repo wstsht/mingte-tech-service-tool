@@ -1,23 +1,20 @@
-"""Упрощённая модель устройства для работы без железа и для тестов.
-
-Отвечает теми же кадрами, что и настоящее устройство, но механику
-изображает условно: только положения карты, без времени движения.
-"""
 from __future__ import annotations
 
 import threading
 import time
 from dataclasses import dataclass
 
+from . import bootloader
 from .devices import MT163, MT166, Profile
 from .protocol import OK, FrameReader, Reply, decode, encode
 
 REFUSED = 0x4E
+NAK = 0x15
 
 
 @dataclass
 class MT163State:
-    card: str | None = None  # None, "entry", "read"
+    card: str | None = None
     retained: int = 0
     timeout_recovery: bool = True
 
@@ -36,9 +33,6 @@ class MT163State:
                 return REFUSED
             self.card = None
             self.retained += 1
-        elif key == "move":
-            if self.card is None:
-                return REFUSED
         elif key == "timeout_recovery":
             self.timeout_recovery = bool(data[:1] == b"\x01")
         else:
@@ -50,7 +44,7 @@ class MT163State:
 class MT166State:
     hopper: int = 30
     collected: int = 0
-    card: str | None = None  # None, "read", "bezel"
+    card: str | None = None
 
     def status(self) -> int:
         value = 0x01
@@ -87,28 +81,18 @@ class MT166State:
         return OK
 
 
-class Emulator:
-    def __init__(self, profile: Profile, delay: float = 0.0) -> None:
-        self.profile = profile
+class _Port:
+    def __init__(self, delay: float) -> None:
         self.delay = delay
-        self.state = MT163State() if profile is MT163 else MT166State()
-        self._reader = FrameReader()
         self._output = bytearray()
         self._ready_at = 0.0
         self._changed = threading.Condition()
 
-    @property
-    def name(self) -> str:
-        return f"Эмулятор {self.profile.model}"
-
-    def write(self, data: bytes) -> None:
-        replies = [self._answer(decode(frame)) for frame in self._reader.feed(data)]
+    def _emit(self, data: bytes) -> None:
         with self._changed:
-            for reply in replies:
-                self._output += reply
-            if replies:
-                self._ready_at = time.monotonic() + self.delay
-                self._changed.notify_all()
+            self._output += data
+            self._ready_at = time.monotonic() + self.delay
+            self._changed.notify_all()
 
     def read(self, timeout: float) -> bytes:
         deadline = time.monotonic() + timeout
@@ -131,13 +115,74 @@ class Emulator:
     def close(self) -> None:
         self.discard_input()
 
+
+class BootloaderEmulator(_Port):
+    name = "Эмулятор загрузчика"
+
+    def __init__(self, delay: float = 0.0, reset_after: float | None = None) -> None:
+        super().__init__(delay)
+        self.stage = "app"
+        self.image = bytearray()
+        self.finished = False
+        self.broken_block: int | None = None
+        if reset_after is not None:
+            timer = threading.Timer(reset_after, self.press_reset)
+            timer.daemon = True
+            timer.start()
+
+    def press_reset(self) -> None:
+        self.stage = "hello"
+        self.image.clear()
+        self.finished = False
+        self._emit(bootloader.HELLO)
+
+    def write(self, data: bytes) -> None:
+        if self.stage == "hello" and data == bootloader.MAGIC:
+            self.stage = "ident"
+            self._emit(bootloader.IDENT)
+        elif self.stage == "ident" and data == bootloader.IDENT:
+            self.stage = "blocks"
+            self._emit(bootloader.READY)
+        elif self.stage == "blocks" and data == bootloader.END:
+            self.stage = "app"
+            self.finished = True
+        elif self.stage == "blocks" and len(data) == bootloader.BLOCK + 3:
+            number = int.from_bytes(data[:2], "big")
+            payload = data[2:-1]
+            expected = len(self.image) // bootloader.BLOCK
+            if number == expected and sum(payload) & 0xFF == data[-1] and number != self.broken_block:
+                self.image += payload
+                self._emit(bootloader.ACK)
+
+
+class Emulator(_Port):
+    VERSIONS = {"MT163": "MT163 V3.10C", "MT166": "MT166 V3.003"}
+
+    def __init__(self, profile: Profile, delay: float = 0.0) -> None:
+        super().__init__(delay)
+        self.profile = profile
+        self.version = self.VERSIONS[profile.model]
+        self.state = MT163State() if profile is MT163 else MT166State()
+        self._reader = FrameReader()
+
+    @property
+    def name(self) -> str:
+        return f"Эмулятор {self.profile.model}"
+
+    def write(self, data: bytes) -> None:
+        for frame in self._reader.feed(data):
+            self._emit(self._answer(decode(frame)))
+
     def _answer(self, request: Reply) -> bytes:
         command = self.profile.find(request.cm, request.pm)
-        key = command.key if command else ""
-        if key == "version":
-            body = bytes((OK,)) + f"{self.profile.model} EMULATOR".encode("ascii")
-        elif key == "status":
+        if command is None:
+            return bytes((NAK,))
+        if command.key == "version":
+            body = bytes((OK,)) + self.version[:12].encode("ascii")
+        elif command.key == "full_version":
+            body = bytes((OK,)) + self.version.encode("ascii").ljust(13, b"\0")
+        elif command.key == "status":
             body = bytes((self.state.status(),))
         else:
-            body = bytes((self.state.handle(key, request.body),))
+            body = bytes((self.state.handle(command.key, request.body),))
         return encode(request.cm, request.pm, body)

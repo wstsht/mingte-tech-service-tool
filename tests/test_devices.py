@@ -15,9 +15,8 @@ def test_profiles_are_registered_by_key():
     "version, profile",
     [
         ("MT163 V3.101", MT163),
-        ("MT163 V1.020", MT163),
-        ("MT166 V1.143", MT166),
-        ("MT166 V3.002", MT166),
+        ("MT163 V3.10C", MT163),
+        ("MT166 V3.003", MT166),
         ("XYZ", None),
         ("", None),
     ],
@@ -44,32 +43,25 @@ def test_mt163_mechanics(key, frame):
     assert MT163.command(key).frame() == h(frame)
 
 
-def test_mt163_move_packs_direction_into_high_bit():
-    move = MT163.command("move")
-    assert move.frame({"direction": 0x00, "steps": 1}) == h("02 00 03 32 33 01 03 02")
-    assert move.frame({"direction": 0x80, "steps": 1}) == h("02 00 03 32 33 81 03 82")
-    assert move.frame({"direction": 0x80, "steps": 10}) == h("02 00 03 32 33 8A 03 89")
-    assert not move.documented
-
-
 def test_mt163_timeout_recovery_flag():
     command = MT163.command("timeout_recovery")
     assert command.frame({"enabled": 1}) == h("02 00 03 32 31 01 03 00")
     assert command.frame({"enabled": 0}) == h("02 00 03 32 31 00 03 01")
-
-
-def test_param_range_is_checked():
-    move = MT163.command("move")
+    assert command.frame() == h("02 00 03 32 31 01 03 00")
     with pytest.raises(ValueError):
-        move.frame({"direction": 0x00, "steps": 0})
-    with pytest.raises(ValueError):
-        move.frame({"direction": 0x00, "steps": 128})
-    with pytest.raises(ValueError):
-        move.frame({"direction": 0x40, "steps": 1})
+        command.frame({"enabled": 2})
 
 
-def test_defaults_are_used_for_missing_params():
-    assert MT163.command("move").frame() == h("02 00 03 32 33 01 03 02")
+def test_card_insertion_waits_longer_than_other_commands():
+    assert MT163.command("insert_front").timeout >= 12
+    assert MT163.command("insert_back").timeout >= 12
+    assert MT163.command("eject").timeout < 12
+
+
+def test_full_version_only_on_mt163():
+    assert MT163.full_version.frame() == h("02 00 02 30 31 03 02")
+    assert MT166.full_version is None
+    assert MT163.find(0x30, 0x31).key == "full_version"
 
 
 @pytest.mark.parametrize(

@@ -62,7 +62,7 @@ def sample() -> Script:
                 steps=[
                     CommandStep("insert_front"),
                     WaitStep(bit=0, state=True, timeout_ms=1000),
-                    CommandStep("move", {"direction": 0x80, "steps": 2}),
+                    CommandStep("timeout_recovery", {"enabled": 0}),
                     PauseStep(ms=0),
                     CommandStep("retain"),
                 ],
@@ -88,8 +88,8 @@ def test_json_with_broken_syntax_is_rejected():
 
 def test_describe_steps():
     assert describe(CommandStep("eject"), MT163) == "Вернуть карту"
-    assert describe(CommandStep("move", {"direction": 0x80, "steps": 3}), MT163) == (
-        "Сдвинуть карту: назад, 3"
+    assert describe(CommandStep("timeout_recovery", {"enabled": 0}), MT163) == (
+        "Возврат по таймауту: выключить"
     )
     assert describe(PauseStep(ms=750), MT163) == "Пауза 750 мс"
     assert describe(RepeatStep(times=5), MT163) == "Повторить 5 раз"
@@ -105,7 +105,7 @@ def test_check_reports_problems():
         profile="mt163",
         steps=[
             CommandStep("to_bezel"),
-            CommandStep("move", {"direction": 0x80, "steps": 500}),
+            CommandStep("timeout_recovery", {"enabled": 7}),
             WaitStep(bit=7),
             RepeatStep(times=0),
             PauseStep(ms=-1),

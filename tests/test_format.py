@@ -40,8 +40,24 @@ def test_summary_for_status_lists_active_sensors():
 
 def test_summary_for_version():
     request = MT166.version.frame()
-    reply = encode(0x30, 0x30, b"\x59MT166 V1.143")
-    assert summary(exchange(request, reply), MT166) == "Версия: MT166 V1.143"
+    reply = encode(0x30, 0x30, b"\x59MT166 V3.003")
+    assert summary(exchange(request, reply), MT166) == "Версия: MT166 V3.003"
+    full = encode(0x30, 0x31, b"\x59MT163 V3.10C\x00")
+    assert summary(exchange(MT163.full_version.frame(), full), MT163) == "Полная версия: MT163 V3.10C"
+
+
+def test_summary_for_nak():
+    nak = Exchange(
+        request=MT163.command("eject").frame(),
+        response=None,
+        source="user",
+        started=datetime(2026, 10, 11),
+        elapsed=0.01,
+        error="устройство не поддерживает команду (NAK)",
+        nak=True,
+    )
+    assert summary(nak, MT163) == "Вернуть карту: устройство не поддерживает команду (NAK)"
+    assert failed(nak, MT163)
 
 
 def test_summary_for_unknown_command():
@@ -69,7 +85,7 @@ def test_log_line_without_answer():
     [
         ("31 30", "02 00 02 31 30 03 02"),
         ("3130", "02 00 02 31 30 03 02"),
-        ("32 33 81", "02 00 03 32 33 81 03 82"),
+        ("32 31 01", "02 00 03 32 31 01 03 00"),
         ("02 00 02 31 30 03 02", "02 00 02 31 30 03 02"),
         ("0x31 0x33", "02 00 02 31 33 03 01"),
     ],

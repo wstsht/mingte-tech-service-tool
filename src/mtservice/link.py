@@ -1,8 +1,3 @@
-"""Обмен с устройством в отдельном потоке.
-
-В линии всегда один запрос: команды пользователя и сценария встают в очередь,
-а опрос статуса выполняется, когда очередь пуста и подошло время.
-"""
 from __future__ import annotations
 
 import logging
@@ -20,6 +15,7 @@ from .transport import Transport
 log = logging.getLogger(__name__)
 
 FRAME_GAP = 0.02
+NAK = 0x15
 
 _STOP = object()
 _WAKE = object()
@@ -39,6 +35,7 @@ class Exchange:
     error: str | None = None
     skipped: int = 0
     port_error: bool = False
+    nak: bool = False
     reply: Reply | None = field(init=False, default=None)
 
     def __post_init__(self) -> None:
@@ -144,6 +141,8 @@ class Link:
         response = None
         error = None
         port_error = False
+        nak = False
+        received = bytearray()
         try:
             self._transport.discard_input()
             self._transport.write(frame)
@@ -153,7 +152,13 @@ class Link:
                 if left <= 0:
                     error = "ответ не распознан" if reader.skipped or reader.pending else "нет ответа"
                     break
-                for candidate in reader.feed(self._transport.read(min(left, 0.05))):
+                chunk = self._transport.read(min(left, 0.05))
+                received += chunk
+                if received and received.count(NAK) == len(received):
+                    nak = True
+                    error = "устройство не поддерживает команду (NAK)"
+                    break
+                for candidate in reader.feed(chunk):
                     reply = decode(candidate)
                     if (reply.cm, reply.pm) == (expected.cm, expected.pm):
                         response = candidate
@@ -173,6 +178,7 @@ class Link:
             error=error,
             skipped=reader.skipped,
             port_error=port_error,
+            nak=nak,
         )
         if self._listener:
             try:

@@ -1,4 +1,3 @@
-"""Сценарии из механических команд: шаги, сохранение в JSON и выполнение."""
 from __future__ import annotations
 
 import json
@@ -201,7 +200,6 @@ class Runner:
         self._stop.set()
 
     def run(self) -> str:
-        """Возвращает "done", "stopped" или "failed"."""
         self.stats = RunStats()
         problems = check(self.script, self.profile)
         if problems:

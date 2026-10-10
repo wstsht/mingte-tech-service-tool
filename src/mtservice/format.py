@@ -9,6 +9,10 @@ from .protocol import OK, FrameError, decode, encode, status_text
 SOURCES = {"user": "кнопка", "script": "сценарий", "poll": "опрос", "connect": "подключение"}
 
 
+def version_text(data: bytes) -> str:
+    return data.decode("ascii", "replace").strip("\x00 ")
+
+
 def hex_bytes(data: bytes) -> str:
     return data.hex(" ").upper()
 
@@ -26,8 +30,8 @@ def summary(exchange: Exchange, profile: Profile) -> str:
     if key == "status":
         active = ", ".join(profile.active_sensors(reply.status)) or "всё сброшено"
         return f"{title}: 0x{reply.status:02X} — {active}"
-    if key == "version" and reply.status == OK:
-        return f"{title}: {reply.data.decode('ascii', 'replace').strip()}"
+    if key in ("version", "full_version") and reply.status == OK:
+        return f"{title}: {version_text(reply.data)}"
     text = f"{title}: {status_text(reply.status)}"
     if reply.data:
         text += f", данные {hex_bytes(reply.data)}"
@@ -54,7 +58,6 @@ def log_line(exchange: Exchange, profile: Profile) -> str:
 
 
 def raw_frame(text: str) -> bytes:
-    """Принимает «CM PM [данные]» или готовый кадр целиком, в hex."""
     tokens = text.replace(",", " ").split()
     tokens = [t[2:] if t.lower().startswith("0x") else t for t in tokens]
     if any(len(t) % 2 for t in tokens) or not all(re.fullmatch(r"[0-9A-Fa-f]*", t) for t in tokens):

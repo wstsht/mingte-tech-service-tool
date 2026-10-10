@@ -1,13 +1,7 @@
-"""Профили устройств: механические команды и раскладка байта статуса.
-
-MT163 — по документу «MT163 V1.020 communication protocol V1.0» (2017),
-MT166 — по «MT166 Communication Protocol V1.1». Сдвиг карты у MT163
-в документе отсутствует и восстановлен по обмену демо-программы.
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Mapping
+from typing import Mapping
 
 from .protocol import encode
 
@@ -16,17 +10,12 @@ from .protocol import encode
 class Param:
     key: str
     title: str
-    minimum: int = 0
-    maximum: int = 255
-    default: int = 0
-    choices: tuple[tuple[str, int], ...] = ()
+    choices: tuple[tuple[str, int], ...]
+    default: int
 
     def check(self, value: int) -> int:
-        if self.choices:
-            if value not in {v for _, v in self.choices}:
-                raise ValueError(f"{self.title}: недопустимое значение {value}")
-        elif not self.minimum <= value <= self.maximum:
-            raise ValueError(f"{self.title}: нужно от {self.minimum} до {self.maximum}")
+        if value not in {v for _, v in self.choices}:
+            raise ValueError(f"{self.title}: недопустимое значение {value}")
         return value
 
 
@@ -37,17 +26,11 @@ class Command:
     cm: int
     pm: int
     params: tuple[Param, ...] = ()
-    pack: Callable[[Mapping[str, int]], bytes] | None = None
     timeout: float = 5.0
-    documented: bool = True
-    note: str = ""
 
     def data(self, values: Mapping[str, int] | None = None) -> bytes:
         given = dict(values or {})
-        resolved = {p.key: p.check(int(given.get(p.key, p.default))) for p in self.params}
-        if self.pack:
-            return self.pack(resolved)
-        return bytes(resolved[p.key] for p in self.params)
+        return bytes(p.check(int(given.get(p.key, p.default))) for p in self.params)
 
     def frame(self, values: Mapping[str, int] | None = None) -> bytes:
         return encode(self.cm, self.pm, self.data(values))
@@ -82,6 +65,7 @@ class Profile:
     sensors: tuple[Sensor, ...]
     version: Command
     status: Command
+    full_version: Command | None = None
 
     def command(self, key: str) -> Command:
         for command in self.all_commands():
@@ -93,7 +77,8 @@ class Profile:
         return next((c for c in self.all_commands() if (c.cm, c.pm) == (cm, pm)), None)
 
     def all_commands(self) -> tuple[Command, ...]:
-        return (self.version, self.status) + self.commands
+        extra = (self.full_version,) if self.full_version else ()
+        return (self.version, self.status) + extra + self.commands
 
     def sensor_states(self, value: int) -> list[SensorState]:
         return [SensorState(s, bool(value >> s.bit & 1)) for s in self.sensors]
@@ -104,9 +89,7 @@ class Profile:
 
 VERSION = Command("version", "Версия", 0x30, 0x30, timeout=1.0)
 STATUS = Command("status", "Статус", 0x32, 0x30, timeout=1.0)
-
-def _pack_move(values: Mapping[str, int]) -> bytes:
-    return bytes((values["direction"] | values["steps"],))
+FULL_VERSION = Command("full_version", "Полная версия", 0x30, 0x31, timeout=1.0)
 
 
 MT163 = Profile(
@@ -116,32 +99,15 @@ MT163 = Profile(
     model="MT163",
     version=VERSION,
     status=STATUS,
+    full_version=FULL_VERSION,
     commands=(
         Command("eject", "Вернуть карту", 0x31, 0x30),
         Command("retain", "Забрать в бокс", 0x31, 0x33),
-        Command(
-            "insert_front", "Приём спереди", 0x31, 0x31,
-            note="Есть в таблице команд, подробного описания нет.",
-        ),
-        Command(
-            "insert_back", "Приём сзади", 0x31, 0x32,
-            note="Есть в таблице команд, подробного описания нет.",
-        ),
-        Command(
-            "move", "Сдвинуть карту", 0x32, 0x33,
-            params=(
-                Param("direction", "Направление", default=0x00,
-                      choices=(("вперёд", 0x00), ("назад", 0x80))),
-                Param("steps", "Шагов по 5 мм", minimum=1, maximum=127, default=1),
-            ),
-            pack=_pack_move,
-            documented=False,
-            note="Нет в документе, взято из обмена демо-программы MT163VE102K. "
-                 "Соответствие направления старшему биту не проверено.",
-        ),
+        Command("insert_front", "Приём спереди", 0x31, 0x31, timeout=15.0),
+        Command("insert_back", "Приём сзади", 0x31, 0x32, timeout=15.0),
         Command(
             "timeout_recovery", "Возврат по таймауту", 0x32, 0x31,
-            params=(Param("enabled", "Режим", default=1, choices=(("включить", 1), ("выключить", 0))),),
+            params=(Param("enabled", "Режим", (("включить", 1), ("выключить", 0)), default=1),),
             timeout=1.0,
         ),
     ),

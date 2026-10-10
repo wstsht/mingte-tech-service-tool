@@ -16,15 +16,6 @@ from .params import ParamEditor
 from .session import Session
 
 
-def _tooltip(command: Command) -> str:
-    lines = [f"CM PM: {command.cm:02X} {command.pm:02X}"]
-    if not command.documented:
-        lines.append("Команды нет в документации производителя.")
-    if command.note:
-        lines.append(command.note)
-    return "\n".join(lines)
-
-
 class CommandsPanel(QWidget):
     def __init__(self, session: Session, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -67,9 +58,8 @@ class CommandsPanel(QWidget):
             box.layout().addWidget(content)
             grid = QGridLayout(content)
             for row, command in enumerate(commands):
-                title = command.title if command.documented else f"{command.title} *"
-                button = QPushButton(title)
-                button.setToolTip(_tooltip(command))
+                button = QPushButton(command.title)
+                button.setToolTip(f"{command.cm:02X} {command.pm:02X}")
                 editor = ParamEditor(command)
                 button.clicked.connect(lambda _=False, c=command, e=editor: self._send(c, e))
                 grid.addWidget(button, row, 0)

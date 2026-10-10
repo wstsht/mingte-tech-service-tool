@@ -1,8 +1,3 @@
-"""Кадр Mingte: STX LenH LenL CM PM [данные] ETX BCC.
-
-Len считает байты от CM до конца данных, BCC — XOR всех байтов от STX до ETX.
-В ответе сразу за CM PM идёт байт статуса (P или S), потом данные.
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,7 +7,7 @@ STX = 0x02
 ETX = 0x03
 MAX_LENGTH = 1024
 
-OK = 0x59  # 'Y'
+OK = 0x59
 
 STATUS_TEXT = {
     0x59: "успешно",
@@ -71,7 +66,6 @@ def status_text(code: int) -> str:
 
 
 class FrameReader:
-    """Собирает кадры из потока байтов, пропуская мусор на линии."""
 
     def __init__(self) -> None:
         self._buffer = bytearray()
